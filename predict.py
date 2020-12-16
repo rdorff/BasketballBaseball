@@ -148,28 +148,43 @@ def predict_teams(sport='baseball',score='Accuracy',algorithms=['Forest','XGB'],
     
     drop_features = ['Position','CareerLen','Rank','Value']
 
-    data = pd.read_csv('Data/' + sport + '.csv')
-    
+
+    data = pd.read_csv('Data/' + sport + '.csv',
+                       dtype={'Position':'category','left':object,
+                              'College':'category'})  
+
+    if sport == 'full_basketball':
+        data = data[data['College']!= '0']
+        data = data[data['left']=='True']
+        data = data[data['Target']!='Retire']
+        data.drop(['player','age','twitter_id','g','mp','ts_pct',
+                   'fg3a_per_fga_pct','fta_per_fga_pct','orb_pct','drb_pct',
+                   'trb_pct','ast_pct','stl_pct','blk_pct','tov_pct','usg_pct',
+                   'ows', 'dws','ws_per_48','obpm','dbpm','vorp','affinity'
+                   ,'left'],
+                  axis=1,inplace=True)
+
     # Constrain year
-    data = data[data['Year'] > start_year]
-    data = data[data['Year'] < end_year]
+    data = data[data['Year'] >= start_year]
+    data = data[data['Year'] <= end_year]
     labels = data['Target']
 
     # One hot encode if necessary      
     if features['Position'] == True:
         data = pd.get_dummies(data, columns=["Position"])
-    if sport == 'basketball' and features['College'] == False:
-        data = data.drop('College', axis=1)
-    elif sport == 'basketball':
-        data['College'] = data['College'].astype('category')
-        data['College'] = data['College'].cat.codes
+    if (sport == 'basketball') or (sport == 'full_basketball'):
+        if features['College'] == False:
+            data = data.drop('College', axis=1)
+        else:
+            data['College'] = data['College'].astype('category')
+            data['College'] = data['College'].cat.codes
 
     # Drop social and performance if necessary
     if features['Social'] == False:
         data = data.drop(teams,axis=1)       
     if features['Performance'] == False:
         data = data.drop(perf,axis=1)
-         
+        
     # Remove columns based on feature parameters
     drop_columns = [key for key, value in features.items() if (value == False and 
                                  ( key in drop_features))]
@@ -177,7 +192,6 @@ def predict_teams(sport='baseball',score='Accuracy',algorithms=['Forest','XGB'],
 
     data = data.drop(['Year','Target'],axis=1)
 
-    
     # Create test/training data 
     x_train,x_test,y_train,y_test = train_test_split(data, labels, 
                                                      test_size=.3)
@@ -191,7 +205,6 @@ def predict_teams(sport='baseball',score='Accuracy',algorithms=['Forest','XGB'],
     else:
         x_test = x_test.drop('Team',axis=1)
         x_train = x_train.drop('Team',axis=1)
-    
     # Run Algorithms   
     for algo in algorithms:
         results.append(run_algo(algo,x_train, y_train,
@@ -220,9 +233,8 @@ def run_scenario(sport='baseball',score='accuracy', algs=['Forest','XGB'],
     '''
      
     test_result = []
-            
     # run scenario 10 times and average
-    for i in range(1):
+    for i in range(10):
         results = predict_teams(sport,score,algs,features,start_year,end_year)
         test_result.append(results)
 
@@ -236,7 +248,7 @@ def run_tests(sport='baseball',
         saves output 
         
         Parameters:
-            sport (str): baseball or basketball
+            sport (str): baseball, basketball, or full_basketball (for college)
             score (string): Accuracy or f1
             algorithms (list): list of alogrithm names to run 
             start_year (int): start year
@@ -256,7 +268,6 @@ def run_tests(sport='baseball',
 
     index = []
     for i in range(n_col+1):
-        
         # set features and index
         if i != n_col:
             feature = columns[i]
@@ -268,37 +279,52 @@ def run_tests(sport='baseball',
         if sport == 'basketball':
             index.extend([feature,feature+'/College',feature +'/Social',
                          feature +'/College/Social'])
-        else:
+        elif sport == 'baseball':
             index.extend([feature,feature + '/Social'])
+        else: # college only
+            index.extend([feature, feature+'/College'])
+            
         
         # run with social and without
         for j in range(2):
-            features['Social'] = social_boo[j]
-            all_results.append(run_scenario(sport,score,algs,
-                                            features,start_year,end_year))
-            # run college
-            if sport == 'basketball':
-                features['College'] = True 
+            if sport == 'full_basketball':
+                features['Social'] = False
+                features['College'] = social_boo[j]
                 all_results.append(run_scenario(sport,score,algs,
-                                                features,start_year,end_year))
-                features['College'] = False
+                                            features,start_year,end_year))               
+            
+            else:
+                features['Social'] = social_boo[j]
+                all_results.append(run_scenario(sport,score,algs,
+                                            features,start_year,end_year))
+                # run college
+                if sport == 'basketball':
+                    features['College'] = True 
+                    all_results.append(run_scenario(sport,score,algs,
+                                                    features,start_year,end_year))
+                    features['College'] = False
         features[feature] = False
     
-    feature = {key:False for key in features.keys()}
+    features = {key:False for key in features.keys()}
+
     # run college and social
-    features['Social'] = True
-    index.append('Social')
-    all_results.append(run_scenario(sport,score,algs,
-                                    features,start_year,end_year))
+    if sport != 'full_basketball':
+
+        features['Social'] = True
+        index.append('Social')
+        all_results.append(run_scenario(sport,score,algs,
+                                        features,start_year,end_year))
     
     if sport == 'basketball':
+
         features['College'] = True
         index.append('Social/College')
         all_results.append(run_scenario(sport,score,algs,
                                         features,start_year,end_year))       
-
+    if sport == 'basketball' or sport == 'full_basketball':
         # college only
         features['Social'] = False
+        features['College'] = True
         index.append('College')
         all_results.append(run_scenario(sport,score,algs,
                                         features,start_year,end_year))       
@@ -311,9 +337,19 @@ def run_tests(sport='baseball',
     print(result_df)
             
 if __name__ == '__main__':
-   # print(run_scenario('basketball',score='f1',
-   #                    algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
-   #                    start_year=2009,end_year=2019))
-   run_tests(sport='baseball',score='f1',
-               algs=['Ada'],#'LogReg','Forest','XGB','KNN','Trees']
-               start_year=2001,end_year=2019)
+    # print(run_tests('basketball',score='f1',
+    #                     algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
+    #                     start_year=2001,end_year=2018))
+    # run_tests(sport='baseball',score='f1',
+                # algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
+                # start_year=2002,end_year=2018)
+    run_tests(sport='full_basketball',score='f1',
+                algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
+                start_year=2001,end_year=2019)
+    
+    # print(run_scenario(sport='full_basketball',score='f1', algs=['Forest','XGB'],
+    #                   features={'Position':True,'Team':False,
+    #                             'CareerLen':False,'Performance':False,
+    #                             'Rank':False,'Value':False,
+    #                             'College':True,'Social':False},
+    #             start_year=2001,end_year=2018))
