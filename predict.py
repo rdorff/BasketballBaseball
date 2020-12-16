@@ -167,6 +167,7 @@ def predict_teams(sport='baseball',score='Accuracy',algorithms=['Forest','XGB'],
     # Constrain year
     data = data[data['Year'] >= start_year]
     data = data[data['Year'] <= end_year]
+
     labels = data['Target']
 
     # One hot encode if necessary      
@@ -184,12 +185,11 @@ def predict_teams(sport='baseball',score='Accuracy',algorithms=['Forest','XGB'],
         data = data.drop(teams,axis=1)       
     if features['Performance'] == False:
         data = data.drop(perf,axis=1)
-        
+
     # Remove columns based on feature parameters
     drop_columns = [key for key, value in features.items() if (value == False and 
                                  ( key in drop_features))]
     data = data.drop(drop_columns,axis=1)
-
     data = data.drop(['Year','Target'],axis=1)
 
     # Create test/training data 
@@ -205,6 +205,7 @@ def predict_teams(sport='baseball',score='Accuracy',algorithms=['Forest','XGB'],
     else:
         x_test = x_test.drop('Team',axis=1)
         x_train = x_train.drop('Team',axis=1)
+
     # Run Algorithms   
     for algo in algorithms:
         results.append(run_algo(algo,x_train, y_train,
@@ -233,6 +234,7 @@ def run_scenario(sport='baseball',score='accuracy', algs=['Forest','XGB'],
     '''
      
     test_result = []
+
     # run scenario 10 times and average
     for i in range(10):
         results = predict_teams(sport,score,algs,features,start_year,end_year)
@@ -248,6 +250,7 @@ def run_tests(sport='baseball',
         saves output 
         
         Parameters:
+
             sport (str): baseball, basketball, or full_basketball (for college)
             score (string): Accuracy or f1
             algorithms (list): list of alogrithm names to run 
@@ -268,6 +271,7 @@ def run_tests(sport='baseball',
 
     index = []
     for i in range(n_col+1):
+
         # set features and index
         if i != n_col:
             feature = columns[i]
@@ -316,15 +320,16 @@ def run_tests(sport='baseball',
                                         features,start_year,end_year))
     
     if sport == 'basketball':
-
         features['College'] = True
         index.append('Social/College')
         all_results.append(run_scenario(sport,score,algs,
                                         features,start_year,end_year))       
+
     if sport == 'basketball' or sport == 'full_basketball':
         # college only
         features['Social'] = False
         features['College'] = True
+
         index.append('College')
         all_results.append(run_scenario(sport,score,algs,
                                         features,start_year,end_year))       
@@ -337,7 +342,8 @@ def run_tests(sport='baseball',
     print(result_df)
             
 if __name__ == '__main__':
-    # print(run_tests('basketball',score='f1',
+
+    # (run_tests(sport='basketball',score='f1',
     #                     algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
     #                     start_year=2001,end_year=2018))
     # run_tests(sport='baseball',score='f1',
@@ -346,10 +352,3 @@ if __name__ == '__main__':
     run_tests(sport='full_basketball',score='f1',
                 algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
                 start_year=2001,end_year=2019)
-    
-    # print(run_scenario(sport='full_basketball',score='f1', algs=['Forest','XGB'],
-    #                   features={'Position':True,'Team':False,
-    #                             'CareerLen':False,'Performance':False,
-    #                             'Rank':False,'Value':False,
-    #                             'College':True,'Social':False},
-    #             start_year=2001,end_year=2018))
