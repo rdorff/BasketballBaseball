@@ -27,14 +27,85 @@ SOFTWARE.
 import numpy as np
 import pandas as pd
 import itertools
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score,accuracy_score
 from sklearn.model_selection import train_test_split
-
+from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier, ExtraTreesClassifier
 from sklearn import neighbors
 from xgboost import XGBClassifier
 
+
+##########################################################################
+def find_hypers(sport='baseball',start_year=2002,end_year=2018):
+
+
+    models = {'LogReg': LogisticRegression(max_iter=1000,solver='lbfgs'),
+              'Ada': AdaBoostClassifier(n_estimators=100,learning_rate=.5),
+              'Forest': RandomForestClassifier(max_depth=None,min_samples_split=2),
+              'KNN': neighbors.KNeighborsClassifier(5, weights="distance"),
+              'Trees': ExtraTreesClassifier(max_depth=None,min_samples_split=2),
+              'XGB': XGBClassifier()  }
+        
+    data = pd.read_csv('Data/' + sport + '.csv',
+                       dtype={'Position':'category','left':object,
+                              'College':'category'})  
+    data = data[data['Year'] >= start_year]
+    data = data[data['Year'] <= end_year]
+    labels = data['Target']
+    data = data.drop(['Target','Year'],axis=1)
+    data = pd.get_dummies(data, columns=["Position","Team"])
+    data['College'] = data['College'].astype('category')
+    data['College'] = data['College'].cat.codes
+    
+       # Create test/training data 
+    x_train,x_test,y_train,y_test = train_test_split(data, labels,
+                                                     test_size=.3)
+
+    algos = {"Log":LogisticRegression(), "Ada":AdaBoostClassifier(),
+            'Forest':RandomForestClassifier(), 'KNN':neighbors.KNeighborsClassifier(),
+            'Trees':ExtraTreesClassifier(), 'XGB':XGBClassifier()}
+    
+    params = {'Log':{'Log__penalty':['l1', 'l2','none'],
+                    'Log__solver':['newton-cg','lbfgs','liblinear','saga'],
+                    'Log__fit_intercept':[False,True]},
+               'Ada':{'Ada__n_estimators':[25,50,75],
+                      'Ada__algorithm':['SAMME','SAMME.R'],
+                      'Ada__learning_rate':[.5,1]},
+               'Forest':{'Forest__n_estimators':[40,100],
+                      'Forest__criterion':['gini'],#,'entropy'],
+                      'Forest__max_depth':[20,30,None],
+                      'Forest__min_samples_split':[2,4],
+                      'Forest__min_samples_leaf':[1,5],
+                      'Forest__max_features':['auto'],#,'sqrt','log2'],
+                      'Forest__max_leaf_nodes':[10,20,None]},
+               'KNN': {'KNN__n_neighbors':[3,5,8],
+                     'KNN__weights':['uniform','distance'],
+                     'KNN__algorithm':['auto','ball_tree','kd_tree','brute'],
+                     'KNN__leaf_size':[15,30,45]},
+               'Trees':{'Trees__n_estimators':[30,50,100],
+                     'Trees__criterion':['gini'],#,'entropy'],
+                     'Trees__max_depth':[20,50,None],
+                     'Trees__min_samples_split':[2,4,6],
+                     'Trees__min_samples_leaf':[1,5],
+                     'Trees__max_features':['auto'],#'sqrt','log2'],
+                     'Trees__max_leaf_nodes':[12,20,None]},
+                'XGB':{'XGB__learning_rate':[.1,.3],
+                       'XGB___max_depth':[3,6],
+                       'XGB__reg_alpha':[0,.2],
+                       'XGB__min_child_weight':[1,2]}}
+    
+    alg = 'Trees'
+    pipe = Pipeline([("scaler", StandardScaler()),
+                     (alg, algos[alg])])
+    
+
+    pipe_gs = GridSearchCV(pipe, params[alg],scoring="f1_micro").fit(x_train, y_train)
+    
+    params = pipe_gs.best_params_
+    print("Best classifier:", params)
 
 ##########################################################################
 def remove_duplicates(probs,curr_teams,classes):
@@ -43,7 +114,8 @@ def remove_duplicates(probs,curr_teams,classes):
         scoring team.
         
         Parameters:
-            probs (np array): array of probability of each class for each player
+            probs (np 
+                   array): array of probability of each class for each player
             curr_teams (np array): current teams
             classes (np array): array of classes used by algorithm
             
@@ -64,7 +136,8 @@ def remove_duplicates(probs,curr_teams,classes):
 
     return predictions
 
-def run_algo(model_name, x_train,y_train,x_test,y_test,curr_teams, score):
+def run_algo(model_name,x_train,y_train,x_test,y_test,curr_teams, score,
+             sport='baseball'):
     """ Predict labels using model and return measure.
 
     Parameters:
@@ -80,13 +153,49 @@ def run_algo(model_name, x_train,y_train,x_test,y_test,curr_teams, score):
         f1 (float): f1 score
     """
     
-    
-    models = {'LogReg': LogisticRegression(max_iter=1000,solver='lbfgs'),
-              'Ada': AdaBoostClassifier(n_estimators=100,learning_rate=.5),
-              'Forest': RandomForestClassifier(max_depth=None,min_samples_split=2),
-              'KNN': neighbors.KNeighborsClassifier(5, weights="distance"),
-              'Trees': ExtraTreesClassifier(max_depth=None,min_samples_split=2),
-              'XGB': XGBClassifier()  }
+    # baseball
+    if sport == 'baseball':
+       models = {'LogReg': LogisticRegression(max_iter=1000,
+                                                penalty='l1',solver='liblinear'),
+                  'Ada': AdaBoostClassifier(n_estimators=100,algorithm='SAMME'),
+                  'Forest': RandomForestClassifier(min_samples_leaf=5,
+                                                    min_samples_split=2,
+                                                    n_estimators=40,
+                                                    max_features='log2',
+                                                    max_leaf_nodes=20,
+                                                    max_depth=20),
+                  'KNN': neighbors.KNeighborsClassifier(n_neighbors=5,
+                                                        leaf_size=15,
+                                                        weights='distance'),
+                  'Trees': ExtraTreesClassifier(max_depth=50,max_leaf_nodes=20,
+                                                max_features='sqrt',
+                                                min_samples_leaf=5,
+                                                min_samples_split=2,
+                                                n_estimators=50),
+                  'XGB': XGBClassifier(max_depth=3,learning_rate=.1,
+                                        min_child_weight=1,reg_alpha=.5)}
+        
+    # basketball
+    else:
+        models = {'LogReg': LogisticRegression(max_iter=1000,fit_intercept=False,
+                                               penalty='l1',solver='liblinear'),
+                  'Ada': AdaBoostClassifier(n_estimators=75,algorithm='SAMME'),
+                  'Forest': RandomForestClassifier(min_samples_leaf=1,
+                                                   min_samples_split=2,
+                                                   n_estimators=100,
+                                                   max_features='auto',
+                                                   max_leaf_nodes=None,
+                                                   max_depth=30),
+                  'KNN': neighbors.KNeighborsClassifier(n_neighbors=3,
+                                                        leaf_size=15,
+                                                        weights='distance'),
+                  'Trees': ExtraTreesClassifier(max_depth=None,max_leaf_nodes=None,
+                                                max_features='auto',
+                                                min_samples_leaf=1,
+                                                min_samples_split=4,
+                                                n_estimators=100),
+                  'XGB': XGBClassifier(max_depth=3,learning_rate=.3,
+                                   min_child_weight=1,reg_alpha=0)}
     
     model = models[model_name]
     model.fit(x_train, y_train)
@@ -208,8 +317,8 @@ def predict_teams(sport='baseball',score='Accuracy',algorithms=['Forest','XGB'],
 
     # Run Algorithms   
     for algo in algorithms:
-        results.append(run_algo(algo,x_train, y_train,
-                                x_test,y_test,test_teams,score))   
+        results.append(run_algo(algo,x_train, y_train,x_test,y_test,
+                                test_teams,score,sport=sport))   
     return results
 
 def run_scenario(sport='baseball',score='accuracy', algs=['Forest','XGB'],
@@ -271,7 +380,7 @@ def run_tests(sport='baseball',
 
     index = []
     for i in range(n_col+1):
-
+        print(i)
         # set features and index
         if i != n_col:
             feature = columns[i]
@@ -289,7 +398,7 @@ def run_tests(sport='baseball',
             index.extend([feature, feature+'/College'])
             
         
-        # run with social and without
+        # run with and without social\
         for j in range(2):
             if sport == 'full_basketball':
                 features['Social'] = False
@@ -337,18 +446,25 @@ def run_tests(sport='baseball',
     # Create DataFrame
     result_df = pd.DataFrame(all_results,columns=algs,index=index)
     result_df = result_df.round(3)
-    result_df.to_csv('Results/'+sport+'_'+score+'.csv')
+    result_df.to_csv('Results/'+sport+'_'+score+'new.csv')
     
     print(result_df)
             
 if __name__ == '__main__':
 
-    # (run_tests(sport='basketball',score='f1',
-    #                     algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
-    #                     start_year=2001,end_year=2018))
+    run_tests(sport='basketball',score='accuracy',
+                        algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
+                        start_year=2001,end_year=2018)
     # run_tests(sport='baseball',score='f1',
-                # algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
-                # start_year=2002,end_year=2018)
-    run_tests(sport='full_basketball',score='f1',
-                algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
-                start_year=2001,end_year=2019)
+    #             algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
+    #             start_year=2002,end_year=2018)
+    # run_tests(sport='full_basketball',score='accuracy',
+    #             algs=['Ada','LogReg','Forest','XGB','KNN','Trees'],
+    #             start_year=2001,end_year=2019)
+    # run_scenario(sport='full_basketball',score='accuracy', algs=['Forest','XGB'],
+    #                   features={'Position':False,'Team':False,
+    #                             'CareerLen':False,'Performance':False,
+    #                             'Rank':False,'Value':False,
+    #                             'College':True,'Social':False},
+    #             start_year=2001,end_year=2019)
+    # find_hypers(sport='basketball',start_year=2001,end_year=2018)
